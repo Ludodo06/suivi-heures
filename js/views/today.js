@@ -26,10 +26,10 @@ const WEEK_LETTERS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 let secondsElement = null;
 let lastKey = null;
 
-function greeting(now) {
+function greeting(now, name) {
   const hour = now.getHours();
-  if (hour < 12) return "Bonjour";
-  return hour < 18 ? "Bon après-midi" : "Bonsoir";
+  const word = hour < 12 ? "Bonjour" : hour < 18 ? "Bon après-midi" : "Bonsoir";
+  return name ? `${word} ${name}` : word;
 }
 
 function dayState(app, calculator) {
@@ -187,7 +187,7 @@ function buildToday(app, calculator, state, now) {
   const hero = el(
     "header",
     { className: "hero" },
-    el("p", { className: "hero-greeting", textContent: greeting(now) }),
+    el("p", { className: "hero-greeting", textContent: greeting(now, app.data.settings.profileName) }),
     el("h1", { textContent: formatLongDay(now) }),
     dayNote(info) && el("p", { className: "hero-note", textContent: dayNote(info) }),
   );

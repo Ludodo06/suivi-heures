@@ -1176,6 +1176,57 @@ dialog h3 {
   margin-top: 16px;
 }
 
+/* ----- start and sign-in ----- */
+
+.splash {
+  padding: 48px 24px;
+  color: var(--text-2);
+  text-align: center;
+}
+
+.login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: 24px 16px;
+  background: linear-gradient(135deg, var(--hero-from), var(--hero-to));
+}
+
+.login-card {
+  width: min(400px, 100%);
+  padding: 24px 20px;
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: 0 12px 40px rgba(11, 11, 11, 0.25);
+}
+
+.login-card h1 {
+  margin: 10px 0 16px;
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+}
+
+.login-logo {
+  display: inline-flex;
+  padding: 10px;
+  border-radius: 14px;
+  background: var(--chip-blue);
+  color: var(--chip-blue-ink);
+}
+
+.login-demo {
+  display: block;
+  margin-top: 16px;
+  color: var(--text-2);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.primary:disabled {
+  opacity: 0.6;
+}
+
 /* ----- toast ----- */
 
 .toast {

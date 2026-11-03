@@ -3,9 +3,13 @@
 // It uses the saved copy only when the network fails.
 
 const CACHE_NAME = "suivi-heures-v1";
+const FIREBASE_CODE_ORIGIN = "https://www.gstatic.com";
 
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") {
+  // Only the app and the Firebase code are kept. The Firebase data requests must
+  // not pass here: they stay open for a long time, and they have their own cache.
+  const { origin } = new URL(event.request.url);
+  if (event.request.method !== "GET" || (origin !== self.location.origin && origin !== FIREBASE_CODE_ORIGIN)) {
     return;
   }
   event.respondWith(fetchThenCache(event.request));

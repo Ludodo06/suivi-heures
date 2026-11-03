@@ -3,11 +3,12 @@
 import { createCalculator } from "./calculator.js";
 import { el, showToast } from "./dom.js";
 import { icon } from "./icons.js";
-import { isDemo, loadData, loadTheme, saveData } from "./storage.js";
+import { hasProfile, isDemo, loadData, loadTheme, saveData, signOutProfile, watchData } from "./storage.js";
 import { dateKey } from "./time.js";
 import { renderCalendar } from "./views/calendar.js";
 import { openDayDialog } from "./views/day-dialog.js";
 import { renderHistory } from "./views/history.js";
+import { showLogin } from "./views/login.js";
 import { applyTheme, renderSettings } from "./views/settings.js";
 import { renderStats } from "./views/stats.js";
 import { renderToday } from "./views/today.js";
@@ -28,12 +29,17 @@ async function persist(data) {
   try {
     await saveData(data);
   } catch (error) {
-    showToast(`Impossible d'enregistrer : ${error.message}`);
+    showSaveError(error);
   }
 }
 
+function showSaveError(error) {
+  console.error(error);
+  showToast(`Impossible d'enregistrer : ${error.message}`);
+}
+
 const app = {
-  data: await loadData(),
+  data: null,
   month: new Date(now.getFullYear(), now.getMonth(), 1),
   calculator() {
     return createCalculator(this.data, new Date());
@@ -48,12 +54,13 @@ const app = {
   action(message, change) {
     const before = structuredClone(this.data);
     change();
-    TABS[activeTab].render(app);
+    // Save first: the hours must be kept even if the display fails.
     persist(this.data);
+    TABS[activeTab].render(app);
     showToast(message, () => {
       this.data = before;
-      TABS[activeTab].render(app);
       persist(this.data);
+      TABS[activeTab].render(app);
     });
   },
   openDay(key) {
@@ -67,7 +74,7 @@ const app = {
 
 function showTab(name) {
   activeTab = name;
-  history.replaceState(null, "", `#${name}`);
+  history.replaceState(null, "", `${location.search}#${name}`);
   for (const button of document.querySelectorAll(".tab")) {
     const isActive = button.value === name;
     button.classList.toggle("active", isActive);
@@ -80,33 +87,75 @@ function showTab(name) {
   TABS[name].render(app);
 }
 
-applyTheme(loadTheme());
-
-if (!app.data.settings.startDate) {
-  app.data.settings.startDate = dateKey(now);
-  await saveData(app.data);
+// A change from another device. A form being typed in is left alone.
+function receiveData(data) {
+  app.data = data;
+  const typing = document.activeElement?.matches?.("main input, main select");
+  if (!typing) {
+    TABS[activeTab].render(app);
+  }
 }
 
-document.getElementById("demo-banner").hidden = !isDemo;
-document.getElementById("tabs").append(
-  ...Object.entries(TABS).map(([name, tab]) =>
-    el(
-      "button",
-      { type: "button", className: "tab", value: name, onclick: () => showTab(name) },
-      icon(tab.iconName, 22),
-      el("span", { textContent: tab.label }),
+function startApp() {
+  document.getElementById("app-layout").hidden = false;
+  document.getElementById("demo-banner").hidden = !isDemo;
+  document.getElementById("tabs").append(
+    ...Object.entries(TABS).map(([name, tab]) =>
+      el(
+        "button",
+        { type: "button", className: "tab", value: name, onclick: () => showTab(name) },
+        icon(tab.iconName, 22),
+        el("span", { textContent: tab.label }),
+      ),
     ),
-  ),
-);
+  );
 
-const wantedTab = location.hash.slice(1);
-showTab(TABS[wantedTab] ? wantedTab : "today");
+  const wantedTab = location.hash.slice(1);
+  showTab(TABS[wantedTab] ? wantedTab : "today");
+  watchData(receiveData, showSaveError);
 
-setInterval(() => {
-  if (activeTab === "today" && !document.getElementById("day-dialog").open) {
-    renderToday(app, false);
+  setInterval(() => {
+    if (activeTab === "today" && !document.getElementById("day-dialog").open) {
+      renderToday(app, false);
+    }
+  }, REFRESH_PERIOD_MS);
+}
+
+async function main() {
+  applyTheme(loadTheme());
+  const splash = document.getElementById("splash");
+
+  if (!isDemo && !(await hasProfile())) {
+    splash.hidden = true;
+    await showLogin();
+    splash.hidden = false;
   }
-}, REFRESH_PERIOD_MS);
+
+  try {
+    app.data = await loadData();
+  } catch (error) {
+    // The profile exists without any data: start again from the sign-in screen.
+    if (error.code === "profile/missing") {
+      await signOutProfile();
+      location.reload();
+      return;
+    }
+    throw error;
+  }
+
+  if (!app.data.settings.startDate) {
+    app.data.settings.startDate = dateKey(now);
+    await saveData(app.data);
+  }
+  splash.hidden = true;
+  startApp();
+}
+
+main().catch((error) => {
+  const splash = document.getElementById("splash");
+  splash.hidden = false;
+  splash.textContent = `L'application n'a pas pu démarrer : ${error.message}`;
+});
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js");

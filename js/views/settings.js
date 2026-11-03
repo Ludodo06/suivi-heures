@@ -3,7 +3,7 @@
 import { ABSENCE_TYPES } from "../calculator.js";
 import { card, el, segmented, showToast } from "../dom.js";
 import { icon } from "../icons.js";
-import { isDemo, loadTheme, normalizeData, saveTheme } from "../storage.js";
+import { changePassword, isDemo, loadTheme, normalizeData, saveTheme, signOutProfile } from "../storage.js";
 import { dateKey } from "../time.js";
 import { deliverFile } from "../export.js";
 
@@ -108,8 +108,10 @@ function backupCard(app) {
         }
         if (confirm("Remplacer toutes les données de cet appareil par cette sauvegarde ?")) {
           app.action("Sauvegarde restaurée", () => {
+            const { profileName } = app.data.settings;
             app.data = normalizeData(saved);
             app.data.settings.startDate ??= dateKey(new Date());
+            app.data.settings.profileName = profileName;
           });
         }
       } catch {
@@ -144,6 +146,49 @@ function backupCard(app) {
   );
 }
 
+function profileCard(app) {
+  const currentInput = el("input", { type: "password", autocomplete: "current-password", required: true });
+  const nextInput = el("input", { type: "password", autocomplete: "new-password", minLength: 6, required: true });
+  const form = el(
+    "form",
+    {
+      id: "password-form",
+      onsubmit: async (event) => {
+        event.preventDefault();
+        try {
+          await changePassword(currentInput.value, nextInput.value);
+          form.reset();
+          showToast("Mot de passe changé");
+        } catch {
+          showToast("Mot de passe actuel incorrect, ou pas de réseau.");
+        }
+      },
+    },
+    field("password-current", "Mot de passe actuel", currentInput),
+    field("password-next", "Nouveau mot de passe", nextInput, "Au moins 6 caractères."),
+    el("button", { type: "submit", className: "secondary full", textContent: "Changer le mot de passe" }),
+  );
+  return card(
+    "Mon profil",
+    app.data.settings.profileName,
+    form,
+    el("button", {
+      id: "sign-out",
+      type: "button",
+      className: "secondary full",
+      textContent: "Se déconnecter",
+      onclick: async () => {
+        if (!navigator.onLine) {
+          showToast("Reconnecte-toi au réseau avant : des heures pourraient ne pas être envoyées.");
+          return;
+        }
+        await signOutProfile();
+        location.reload();
+      },
+    }),
+  );
+}
+
 function demoCard() {
   return card(
     "Données d'exemple",
@@ -171,7 +216,7 @@ export function renderSettings(app) {
       "div",
       { className: "columns-layout" },
       rulesCard(app),
-      el("div", { className: "stack" }, themeCard(app), backupCard(app), demoCard()),
+      el("div", { className: "stack" }, !isDemo && profileCard(app), themeCard(app), backupCard(app), demoCard()),
     ),
   );
 }

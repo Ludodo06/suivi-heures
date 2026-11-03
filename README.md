@@ -25,6 +25,17 @@ Then open http://localhost:8000.
 - An Excel export of a month or a year, and a backup file.
 - Example data, to try the app: add `?demo=1` to the address.
 
+## Accounts and data
+
+Firebase keeps the data of each profile, and syncs the phone and the computer.
+
+- A profile is a name and a password. Firebase Authentication receives them as an e-mail address built
+  from the name. No e-mail is ever sent, so a forgotten password cannot be recovered.
+- Creating a profile needs an invite code. Each code is a document in the `invites` collection of
+  Firestore, and nobody can read that collection from the app.
+- `firestore.rules` holds the security rules. Paste them in the Firebase console after each change.
+- The values in `js/firebase-config.js` are public by design. The security rules protect the data.
+
 ## Tests
 
 Start the local server, then open http://localhost:8000/tests/.
@@ -43,6 +54,9 @@ Start the local server, then open http://localhost:8000/tests/.
 - `js/export.js` and `js/xlsx.js`: the Excel export.
 - `js/demo.js`: the example data.
 - `js/dom.js` and `js/icons.js`: small page helpers and the icons.
-- `js/storage.js`: where the data is saved. Only this file knows how.
+- `js/storage.js`: the profiles, and where the data is saved. Only this file knows how.
+- `js/firebase-config.js`: the public address of the Firebase project.
+- `js/views/login.js`: the sign-in screen.
+- `firestore.rules`: the security rules of the data.
 - `sw.js`: the service worker. It lets the app open without a network.
 - `manifest.webmanifest` and `icons/`: the name and the icon of the installed app.

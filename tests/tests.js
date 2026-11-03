@@ -4,6 +4,7 @@ import { createCalculator } from "../js/calculator.js";
 import { holidaysOf } from "../js/holidays.js";
 import { formatHoursMinutes, formatSigned } from "../js/time.js";
 import { buildReport } from "../js/export.js";
+import { listChanges } from "../js/storage.js";
 import { daysBetween, nextHoliday, periodStats, targetStreak } from "../js/insights.js";
 
 const lines = [];
@@ -95,6 +96,16 @@ const night = createCalculator(
 );
 check("first part of the night", formatHoursMinutes(night.day("2026-11-02").worked), "1h 00m");
 check("second part of the night", formatHoursMinutes(night.day("2026-11-03").worked), "1h 00m");
+
+// Only the changed fields are sent to the other devices.
+const before = { sessions: { a: { start: "1", end: null } }, settings: { dailyHours: 8 }, notes: { x: "old" } };
+const after = { sessions: { a: { end: "2", start: "1" }, b: { start: "3", end: null } }, settings: { dailyHours: 8 }, notes: {} };
+check(
+  "changed fields",
+  listChanges(before, after).map(({ group, key, value }) => [group, key, value === undefined ? "removed" : "set"]),
+  [["sessions", "a", "set"], ["sessions", "b", "set"], ["notes", "x", "removed"]],
+);
+check("the order of the fields does not count", listChanges({ sessions: { a: { start: "1", end: null } } }, { sessions: { a: { end: null, start: "1" } } }), []);
 
 // Averages, records and next events.
 const stats = periodStats(afterDay, "2026-11-02");
