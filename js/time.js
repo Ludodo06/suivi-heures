@@ -1,8 +1,10 @@
 // Date and duration helpers. No access to the page or to the storage here.
 
 const MS_PER_SECOND = 1000;
-const MS_PER_MINUTE = 60 * MS_PER_SECOND;
-const MS_PER_HOUR = 60 * MS_PER_MINUTE;
+export const MS_PER_MINUTE = 60 * MS_PER_SECOND;
+export const MS_PER_HOUR = 60 * MS_PER_MINUTE;
+
+const pad = (value) => String(value).padStart(2, "0");
 
 /**
  * Returns the start of the day of a date (local time).
@@ -28,34 +30,48 @@ export function startOfDay(date) {
  */
 export function startOfWeek(date) {
   const daysSinceMonday = (date.getDay() + 6) % 7;
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() - daysSinceMonday);
+  return addDays(startOfDay(date), -daysSinceMonday);
 }
 
 /**
- * Adds up the time of the sessions from a given moment until now.
- *
- * A session that starts before `from` only counts for its part after `from`.
- * So a night session is split correctly between two days.
+ * Moves a date by a number of days. It stays correct on clock change days.
  *
  * Args:
- *   sessions: The array of sessions.
- *   from: The start of the period.
- *   now: The current moment. It is the end of a session that still runs.
+ *   date: The date to move.
+ *   days: The number of days, negative to go back.
  *
  * Returns:
- *   The total duration in milliseconds.
- *
- * Example:
- *   A session from 23:00 to 01:00 gives 1 hour for the second day.
+ *   A new Date.
  */
-export function totalSince(sessions, from, now) {
-  let total = 0;
-  for (const session of sessions) {
-    const start = Math.max(new Date(session.start).getTime(), from.getTime());
-    const end = session.end ? new Date(session.end).getTime() : now.getTime();
-    total += Math.max(end - start, 0);
-  }
-  return total;
+export function addDays(date, days) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+}
+
+/**
+ * Returns the key of a day.
+ *
+ * Args:
+ *   date: Any moment of the day.
+ *
+ * Returns:
+ *   A text like "2026-11-03". Sorting these texts also sorts the days.
+ */
+export function dateKey(date) {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/**
+ * Reads a day key.
+ *
+ * Args:
+ *   key: A text like "2026-11-03".
+ *
+ * Returns:
+ *   A new Date at 00:00 on that day (local time).
+ */
+export function parseKey(key) {
+  const [year, month, day] = key.split("-").map(Number);
+  return new Date(year, month - 1, day);
 }
 
 /**
@@ -70,7 +86,20 @@ export function totalSince(sessions, from, now) {
 export function formatHoursMinutes(duration) {
   const hours = Math.floor(duration / MS_PER_HOUR);
   const minutes = Math.floor((duration % MS_PER_HOUR) / MS_PER_MINUTE);
-  return `${hours}h ${String(minutes).padStart(2, "0")}m`;
+  return `${hours}h ${pad(minutes)}m`;
+}
+
+/**
+ * Formats a duration that can be negative, always with its sign.
+ *
+ * Args:
+ *   duration: The duration in milliseconds.
+ *
+ * Returns:
+ *   A text like "+0h 30m" or "-1h 20m".
+ */
+export function formatSigned(duration) {
+  return `${duration < 0 ? "-" : "+"}${formatHoursMinutes(Math.abs(duration))}`;
 }
 
 /**
@@ -84,7 +113,7 @@ export function formatHoursMinutes(duration) {
  */
 export function formatWithSeconds(duration) {
   const seconds = Math.floor((duration % MS_PER_MINUTE) / MS_PER_SECOND);
-  return `${formatHoursMinutes(duration)} ${String(seconds).padStart(2, "0")}s`;
+  return `${formatHoursMinutes(duration)} ${pad(seconds)}s`;
 }
 
 /**
@@ -97,5 +126,31 @@ export function formatWithSeconds(duration) {
  *   A text like "08:30".
  */
 export function formatClock(date) {
-  return date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/**
+ * Formats a day for the page.
+ *
+ * Args:
+ *   date: The date to format.
+ *
+ * Returns:
+ *   A text like "mar. 3 nov.".
+ */
+export function formatDay(date) {
+  return date.toLocaleDateString("fr-CH", { weekday: "short", day: "numeric", month: "short" });
+}
+
+/**
+ * Formats a day in full.
+ *
+ * Args:
+ *   date: The date to format.
+ *
+ * Returns:
+ *   A text like "mardi 3 novembre".
+ */
+export function formatLongDay(date) {
+  return date.toLocaleDateString("fr-CH", { weekday: "long", day: "numeric", month: "long" });
 }

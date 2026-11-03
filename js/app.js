@@ -1,95 +1,112 @@
-import { loadSessions, saveSessions } from "./storage.js";
-import {
-  formatClock,
-  formatHoursMinutes,
-  formatWithSeconds,
-  startOfDay,
-  startOfWeek,
-  totalSince,
-} from "./time.js";
+// Starts the app and connects the screens together.
+
+import { createCalculator } from "./calculator.js";
+import { el, showToast } from "./dom.js";
+import { icon } from "./icons.js";
+import { isDemo, loadData, loadTheme, saveData } from "./storage.js";
+import { dateKey } from "./time.js";
+import { renderCalendar } from "./views/calendar.js";
+import { openDayDialog } from "./views/day-dialog.js";
+import { renderHistory } from "./views/history.js";
+import { applyTheme, renderSettings } from "./views/settings.js";
+import { renderStats } from "./views/stats.js";
+import { renderToday } from "./views/today.js";
 
 const REFRESH_PERIOD_MS = 1000;
+const TABS = {
+  today: { render: renderToday, label: "Aujourd'hui", iconName: "today" },
+  history: { render: renderHistory, label: "Historique", iconName: "list" },
+  calendar: { render: renderCalendar, label: "Calendrier", iconName: "calendar" },
+  stats: { render: renderStats, label: "Stats", iconName: "chart" },
+  settings: { render: renderSettings, label: "Réglages", iconName: "settings" },
+};
 
-const timerValue = document.getElementById("timer-value");
-const toggleButton = document.getElementById("toggle-button");
-const totalToday = document.getElementById("total-today");
-const totalWeek = document.getElementById("total-week");
-const sessionList = document.getElementById("session-list");
-const sessionEmpty = document.getElementById("session-empty");
+const now = new Date();
+let activeTab = "today";
 
-let sessions = loadSessions();
-
-// ----- sessions -----
-
-/**
- * Returns the session that is running.
- *
- * Returns:
- *   The session without an end, or undefined if no session runs.
- */
-function findRunningSession() {
-  return sessions.find((session) => session.end === null);
-}
-
-/** Starts a new session, or stops the session that is running. */
-function toggleSession() {
-  const running = findRunningSession();
-  const now = new Date().toISOString();
-  if (running) {
-    running.end = now;
-  } else {
-    sessions.push({ id: crypto.randomUUID(), start: now, end: null });
+async function persist(data) {
+  try {
+    await saveData(data);
+  } catch (error) {
+    showToast(`Impossible d'enregistrer : ${error.message}`);
   }
-  saveSessions(sessions);
-  render();
 }
 
-// ----- display -----
+const app = {
+  data: await loadData(),
+  month: new Date(now.getFullYear(), now.getMonth(), 1),
+  calculator() {
+    return createCalculator(this.data, new Date());
+  },
+  /**
+   * Changes the data, saves it, and offers to undo the change.
+   *
+   * Args:
+   *   message: The message to show.
+   *   change: The function that changes `app.data`.
+   */
+  action(message, change) {
+    const before = structuredClone(this.data);
+    change();
+    TABS[activeTab].render(app);
+    persist(this.data);
+    showToast(message, () => {
+      this.data = before;
+      TABS[activeTab].render(app);
+      persist(this.data);
+    });
+  },
+  openDay(key) {
+    openDayDialog(app, key);
+  },
+  moveMonth(step) {
+    this.month = new Date(this.month.getFullYear(), this.month.getMonth() + step, 1);
+    TABS[activeTab].render(app);
+  },
+};
 
-/**
- * Shows the sessions of today, most recent first.
- *
- * Args:
- *   now: The current moment.
- */
-function renderSessionList(now) {
-  const dayStart = startOfDay(now);
-  const todaySessions = sessions
-    .filter((session) => !session.end || new Date(session.end) > dayStart)
-    .reverse();
-
-  sessionList.replaceChildren(
-    ...todaySessions.map((session) => {
-      const start = formatClock(new Date(session.start));
-      const end = session.end ? formatClock(new Date(session.end)) : "en cours";
-      const item = document.createElement("li");
-      item.textContent = `${start} – ${end}`;
-      return item;
-    }),
-  );
-  sessionEmpty.hidden = todaySessions.length > 0;
+function showTab(name) {
+  activeTab = name;
+  history.replaceState(null, "", `#${name}`);
+  for (const button of document.querySelectorAll(".tab")) {
+    const isActive = button.value === name;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-current", isActive ? "page" : "false");
+  }
+  for (const section of document.querySelectorAll(".screen")) {
+    section.hidden = section.id !== `screen-${name}`;
+  }
+  window.scrollTo(0, 0);
+  TABS[name].render(app);
 }
 
-/** Updates the whole page from the sessions and the current time. */
-function render() {
-  const now = new Date();
-  const running = findRunningSession();
+applyTheme(loadTheme());
 
-  const runningDuration = running ? now - new Date(running.start) : 0;
-  timerValue.textContent = formatWithSeconds(runningDuration);
-  toggleButton.textContent = running ? "Arrêter" : "Démarrer";
-  toggleButton.classList.toggle("running", Boolean(running));
-
-  totalToday.textContent = formatHoursMinutes(totalSince(sessions, startOfDay(now), now));
-  totalWeek.textContent = formatHoursMinutes(totalSince(sessions, startOfWeek(now), now));
-  renderSessionList(now);
+if (!app.data.settings.startDate) {
+  app.data.settings.startDate = dateKey(now);
+  await saveData(app.data);
 }
 
-// ----- start -----
+document.getElementById("demo-banner").hidden = !isDemo;
+document.getElementById("tabs").append(
+  ...Object.entries(TABS).map(([name, tab]) =>
+    el(
+      "button",
+      { type: "button", className: "tab", value: name, onclick: () => showTab(name) },
+      icon(tab.iconName, 22),
+      el("span", { textContent: tab.label }),
+    ),
+  ),
+);
 
-toggleButton.addEventListener("click", toggleSession);
-setInterval(render, REFRESH_PERIOD_MS);
-render();
+const wantedTab = location.hash.slice(1);
+showTab(TABS[wantedTab] ? wantedTab : "today");
+
+setInterval(() => {
+  if (activeTab === "today" && !document.getElementById("day-dialog").open) {
+    renderToday(app, false);
+  }
+}, REFRESH_PERIOD_MS);
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js");
