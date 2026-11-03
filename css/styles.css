@@ -1,0 +1,132 @@
+:root {
+  --background: #f4f6f8;
+  --surface: #ffffff;
+  --text: #1c2733;
+  --text-muted: #5f6f7f;
+  --border: #dde3e9;
+  --start: #1f6f43;
+  --stop: #b3372f;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #12181f;
+    --surface: #1c2530;
+    --text: #e8edf2;
+    --text-muted: #9aa8b5;
+    --border: #2d3844;
+    --start: #2e8b57;
+    --stop: #c9483f;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+main {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+}
+
+h1 {
+  margin: 0 0 24px;
+  font-size: 1.4rem;
+}
+
+h2 {
+  margin: 24px 0 8px;
+  font-size: 1rem;
+}
+
+/* ----- timer ----- */
+
+.timer {
+  padding: 24px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  text-align: center;
+}
+
+.timer-value {
+  margin: 0 0 16px;
+  font-size: 2.4rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.toggle {
+  width: 100%;
+  padding: 16px;
+  border: none;
+  border-radius: 10px;
+  background: var(--start);
+  color: #ffffff;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.toggle.running {
+  background: var(--stop);
+}
+
+/* ----- totals ----- */
+
+.totals {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.total {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.total-label {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.total-value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ----- sessions ----- */
+
+.session-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.session-list li {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+.session-empty {
+  margin: 0;
+  color: var(--text-muted);
+}
