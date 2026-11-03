@@ -1,7 +1,7 @@
 // Looks at the data to find averages, records and the next events.
 // No access to the page or to the storage here.
 
-import { holidaysOf } from "./holidays.js";
+import { effectiveHolidays } from "./holidays.js";
 import { addDays, dateKey, parseKey, startOfWeek } from "./time.js";
 
 const MS_PER_DAY = 86400000;
@@ -25,14 +25,15 @@ export function daysBetween(fromKey, toKey) {
  *
  * Args:
  *   today: The key of the current day.
+ *   overrides: The changes to the holidays made by the user.
  *
  * Returns:
  *   { key, name, days }, or null.
  */
-export function nextHoliday(today) {
+export function nextHoliday(today, overrides = {}) {
   const year = parseKey(today).getFullYear();
-  const all = [...holidaysOf(year), ...holidaysOf(year + 1)].sort(([a], [b]) => a.localeCompare(b));
-  for (const [key, name] of all) {
+  const all = [...effectiveHolidays(year, overrides), ...effectiveHolidays(year + 1, overrides)].sort(([a], [b]) => a.localeCompare(b));
+  for (const [key, { name }] of all) {
     const weekDay = parseKey(key).getDay();
     if (key > today && weekDay !== 0 && weekDay !== 6) {
       return { key, name, days: daysBetween(today, key) };

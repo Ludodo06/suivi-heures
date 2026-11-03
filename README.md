@@ -20,6 +20,7 @@ Then open http://localhost:8000.
 - An hour bank: the time above or below the daily target.
 - Hours and notes that can be corrected afterwards, for any day.
 - A calendar with the vacation days and the public holidays of the canton of Vaud.
+- Holidays that can be added or removed, for a full day or a half day.
 - Statistics: averages, records, weekly hours, bank evolution and a year heatmap.
 - An Excel export of a month or a year, and a backup file.
 - Example data, to try the app: add `?demo=1` to the address.

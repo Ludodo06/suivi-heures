@@ -1,7 +1,7 @@
 // Turns the saved data into day totals, the hour bank and the vacation count.
 // No access to the page or to the storage here.
 
-import { holidaysOf } from "./holidays.js";
+import { effectiveHolidays } from "./holidays.js";
 import { MS_PER_HOUR, MS_PER_MINUTE, addDays, dateKey, parseKey, startOfDay, startOfWeek } from "./time.js";
 
 /**
@@ -85,21 +85,34 @@ function collectWork(sessions, now) {
  *   - weekWorked(): the work of the current week in milliseconds.
  */
 export function createCalculator(data, now) {
-  const { absences, closedDays, sessions, settings } = data;
+  const { absences, closedDays, holidayOverrides, sessions, settings } = data;
+  const holidaysByYear = new Map();
+  const holidaysFor = (year) => {
+    if (!holidaysByYear.has(year)) {
+      holidaysByYear.set(year, effectiveHolidays(year, holidayOverrides));
+    }
+    return holidaysByYear.get(year);
+  };
   const today = dateKey(now);
   const work = collectWork(sessions, now);
 
   function day(key) {
     const date = parseKey(key);
-    const holiday = holidaysOf(date.getFullYear()).get(key) ?? null;
+    const entry = holidaysFor(date.getFullYear()).get(key) ?? null;
+    const holiday = entry && !entry.isHalf ? entry.name : null;
+    const halfHoliday = entry?.isHalf ? entry.name : null;
     const weekend = date.getDay() === 0 || date.getDay() === 6;
     const isWorkingDay = !holiday && !weekend;
     const absence = isWorkingDay ? (absences[key] ?? null) : null;
-    const share = absence ? ABSENCE_TYPES[absence].targetShare : 1;
+    // A half holiday leaves half a day. An absence then takes from that half.
+    const openShare = halfHoliday ? 0.5 : 1;
+    const absenceType = absence ? ABSENCE_TYPES[absence] : null;
+    const share = absenceType ? Math.max(openShare - (1 - absenceType.targetShare), 0) : openShare;
+    const vacationCost = absenceType ? Math.min(absenceType.vacationDays, openShare) : 0;
     const isDue = isWorkingDay && key >= settings.startDate;
     const target = isDue ? settings.dailyHours * MS_PER_HOUR * share : 0;
     const { worked, pause, first, last } = work.get(key) ?? { worked: 0, pause: 0, first: null, last: null };
-    return { key, date, holiday, weekend, isWorkingDay, absence, target, worked, pause, first, last, delta: worked - target };
+    return { key, date, holiday, halfHoliday, weekend, isWorkingDay, absence, vacationCost, target, worked, pause, first, last, delta: worked - target };
   }
 
   // An open today only adds its extra time: the day is not over yet.
@@ -123,8 +136,8 @@ export function createCalculator(data, now) {
   function vacationTaken(year) {
     let total = 0;
     for (const key of Object.keys(absences)) {
-      if (key.startsWith(`${year}-`) && day(key).isWorkingDay) {
-        total += ABSENCE_TYPES[absences[key]].vacationDays;
+      if (key.startsWith(`${year}-`)) {
+        total += day(key).vacationCost;
       }
     }
     return total;
@@ -163,8 +176,10 @@ export function dayNote(info) {
   if (info.holiday) {
     return info.holiday;
   }
-  if (info.absence) {
-    return ABSENCE_TYPES[info.absence].label;
-  }
-  return info.weekend ? "Week-end" : "";
+  const parts = [
+    info.halfHoliday && `${info.halfHoliday} (demi-journée fériée)`,
+    info.absence && ABSENCE_TYPES[info.absence].label,
+    info.weekend && "Week-end",
+  ];
+  return parts.filter(Boolean).join(" · ");
 }

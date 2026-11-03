@@ -163,7 +163,7 @@ function bankHint(bank, dailyHours) {
 }
 
 function widgets(app, calculator) {
-  const holiday = nextHoliday(calculator.today);
+  const holiday = nextHoliday(calculator.today, app.data.holidayOverrides);
   const vacation = nextVacation(app.data.absences, calculator.today);
   const inDays = (days) => (days === 1 ? "Demain" : `Dans ${days} jours`);
   return el(

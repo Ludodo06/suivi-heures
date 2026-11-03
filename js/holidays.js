@@ -74,3 +74,33 @@ export function holidaysOf(year) {
   cache.set(year, holidays);
   return holidays;
 }
+
+/**
+ * Returns the holidays of a year, with the changes made by the user.
+ *
+ * Args:
+ *   year: The year.
+ *   overrides: An object from day key to a change. A change is
+ *     { kind: "none" } to remove an official holiday, or
+ *     { kind: "full" or "half", name } to add a holiday.
+ *
+ * Returns:
+ *   A Map from day key to { name, isHalf, isOfficial }.
+ */
+export function effectiveHolidays(year, overrides) {
+  const holidays = new Map();
+  for (const [key, name] of holidaysOf(year)) {
+    holidays.set(key, { name, isHalf: false, isOfficial: true });
+  }
+  for (const [key, change] of Object.entries(overrides)) {
+    if (!key.startsWith(`${year}-`)) {
+      continue;
+    }
+    if (change.kind === "none") {
+      holidays.delete(key);
+    } else {
+      holidays.set(key, { name: change.name, isHalf: change.kind === "half", isOfficial: false });
+    }
+  }
+  return holidays;
+}

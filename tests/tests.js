@@ -18,7 +18,7 @@ const session = (day, start, end) => ({
   end: end ? new Date(`${day}T${end}:00`).toISOString() : null,
 });
 const settings = { dailyHours: 8, vacationDays: 20, startDate: "2026-11-02", startBalanceMinutes: 0 };
-const makeData = (sessions, absences = {}, extra = {}, closedDays = {}) => ({ sessions, absences, closedDays, notes: {}, settings: { ...settings, ...extra } });
+const makeData = (sessions, absences = {}, extra = {}, closedDays = {}, holidayOverrides = {}) => ({ sessions, absences, closedDays, notes: {}, holidayOverrides, settings: { ...settings, ...extra } });
 
 // Holidays of the canton of Vaud in 2026.
 check(
@@ -43,6 +43,27 @@ const midDay = createCalculator(makeData([session("2026-11-02", "08:00", null)])
 check("an unfinished day does not lower the bank", formatSigned(midDay.bank), "+0h 00m");
 const longDay = createCalculator(makeData([session("2026-11-02", "08:00", "17:00")]), new Date("2026-11-02T18:00:00"));
 check("extra hours of today count", formatSigned(longDay.bank), "+1h 00m");
+
+// Holidays changed by the user: Monday half holiday, Tuesday half holiday with a
+// half day of vacation, Wednesday full holiday, then Christmas removed.
+const changed = createCalculator(
+  makeData(
+    [],
+    { "2026-11-03": "halfVacation", "2026-11-04": "vacation" },
+    {},
+    {},
+    { "2026-11-02": { kind: "half", name: "Test" }, "2026-11-03": { kind: "half", name: "Test" }, "2026-11-04": { kind: "full", name: "Test" }, "2026-12-25": { kind: "none" } },
+  ),
+  new Date("2026-11-05T09:00:00"),
+);
+check("a half holiday leaves half a day", formatHoursMinutes(changed.day("2026-11-02").target), "4h 00m");
+check("a half holiday and a half vacation leave nothing", changed.day("2026-11-03").target, 0);
+check("a full holiday leaves nothing", changed.day("2026-11-04").target, 0);
+check("the bank follows the changed holidays", formatSigned(changed.bank), "-4h 00m");
+check("only the half day of vacation counts", changed.vacationTaken(2026), 0.5);
+check("a removed holiday is a normal day", changed.day("2026-12-25").holiday, null);
+check("a half holiday costs half a vacation day", createCalculator(makeData([], { "2026-11-02": "vacation" }, {}, {}, { "2026-11-02": { kind: "half", name: "Test" } }), new Date("2026-11-03T09:00:00")).vacationTaken(2026), 0.5);
+check("next holiday skips a removed one", nextHoliday("2026-11-03", { "2026-12-25": { kind: "none" } }).key, "2027-01-01");
 
 // A finished day counts in full, even when it is the current day.
 const closed = createCalculator(makeData([session("2026-11-02", "08:00", "12:00")], {}, {}, { "2026-11-02": true }), new Date("2026-11-02T18:00:00"));

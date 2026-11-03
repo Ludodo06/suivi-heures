@@ -1,9 +1,9 @@
 // The month calendar, the vacation count and the coming holidays.
 
-import { ABSENCE_TYPES, dayNote } from "../calculator.js";
+import { dayNote } from "../calculator.js";
 import { splitBar } from "../charts.js";
 import { card, el, showToast } from "../dom.js";
-import { holidaysOf } from "../holidays.js";
+import { effectiveHolidays, holidaysOf } from "../holidays.js";
 import { icon } from "../icons.js";
 import { daysBetween } from "../insights.js";
 import { MS_PER_HOUR, addDays, dateKey, formatDay, parseKey } from "../time.js";
@@ -17,6 +17,7 @@ function dayClass(info, today) {
   const classes = ["calendar-day"];
   if (info.holiday) classes.push("holiday");
   else if (info.absence) classes.push(info.absence);
+  else if (info.halfHoliday) classes.push("halfHoliday");
   else if (info.weekend) classes.push("weekend");
   else if (info.worked > 0) classes.push("worked");
   if (info.key === today) classes.push("today");
@@ -26,10 +27,10 @@ function dayClass(info, today) {
 function vacationCounts(app, calculator, year) {
   let taken = 0;
   let planned = 0;
-  for (const [key, type] of Object.entries(app.data.absences)) {
-    if (key.startsWith(`${year}-`) && calculator.day(key).isWorkingDay) {
-      if (key <= calculator.today) taken += ABSENCE_TYPES[type].vacationDays;
-      else planned += ABSENCE_TYPES[type].vacationDays;
+  for (const key of Object.keys(app.data.absences)) {
+    if (key.startsWith(`${year}-`)) {
+      if (key <= calculator.today) taken += calculator.day(key).vacationCost;
+      else planned += calculator.day(key).vacationCost;
     }
   }
   return { taken, planned };
@@ -57,9 +58,10 @@ function vacationCard(app, calculator, year) {
   );
 }
 
-function holidaysCard(calculator) {
+function holidaysCard(app, calculator) {
+  const overrides = app.data.holidayOverrides;
   const year = parseKey(calculator.today).getFullYear();
-  const upcoming = [...holidaysOf(year), ...holidaysOf(year + 1)]
+  const upcoming = [...effectiveHolidays(year, overrides), ...effectiveHolidays(year + 1, overrides)]
     .filter(([key]) => key > calculator.today)
     .sort(([a], [b]) => a.localeCompare(b))
     .slice(0, UPCOMING_HOLIDAYS);
@@ -69,16 +71,138 @@ function holidaysCard(calculator) {
     el(
       "ul",
       { className: "holiday-list" },
-      upcoming.map(([key, name]) =>
+      upcoming.map(([key, { name, isHalf }]) =>
         el(
           "li",
           {},
-          el("span", { className: "holiday-name" }, name, el("small", { textContent: formatDay(parseKey(key)) })),
+          el("span", { className: "holiday-name" }, name, el("small", { textContent: `${formatDay(parseKey(key))}${isHalf ? " · demi-journée" : ""}` })),
           el("span", { className: "badge", textContent: `J-${daysBetween(calculator.today, key)}` }),
         ),
       ),
     ),
+    el(
+      "button",
+      { id: "manage-holidays", type: "button", className: "secondary full", onclick: () => openHolidaysDialog(app, app.month.getFullYear()) },
+      icon("pencil", 16),
+      "Gérer les jours fériés",
+    ),
   );
+}
+
+/**
+ * Opens the window that adds or removes the holidays of a year.
+ *
+ * Args:
+ *   app: The app object: { data, action }.
+ *   year: The year to show.
+ */
+function openHolidaysDialog(app, year) {
+  const reopen = (nextYear = year) => openHolidaysDialog(app, nextYear);
+  const change = (message, update) => {
+    app.action(message, update);
+    reopen();
+  };
+  const overrides = app.data.holidayOverrides;
+  const holidays = [...effectiveHolidays(year, overrides)].sort(([a], [b]) => a.localeCompare(b));
+  const removed = [...holidaysOf(year)].filter(([key]) => overrides[key]?.kind === "none");
+
+  const dateInput = el("input", { id: "holiday-date", type: "date", value: `${year}-12-31` });
+  const kindSelect = el(
+    "select",
+    { id: "holiday-kind" },
+    el("option", { value: "half", textContent: "Demi-journée" }),
+    el("option", { value: "full", textContent: "Journée entière" }),
+  );
+  const nameInput = el("input", { id: "holiday-name", type: "text", maxLength: 60, placeholder: "Ex. : Saint-Sylvestre" });
+  const error = el("p", { className: "form-error", hidden: true });
+
+  const add = () => {
+    const name = nameInput.value.trim();
+    if (!dateInput.value || !name) {
+      error.textContent = "Indique une date et un nom.";
+      error.hidden = false;
+      return;
+    }
+    change(`${name} ajouté`, () => {
+      app.data.holidayOverrides[dateInput.value] = { kind: kindSelect.value, name };
+    });
+  };
+
+  const removeHoliday = (key, entry) => () =>
+    change(`${entry.name} retiré`, () => {
+      if (holidaysOf(year).has(key)) {
+        app.data.holidayOverrides[key] = { kind: "none" };
+      } else {
+        delete app.data.holidayOverrides[key];
+      }
+    });
+
+  const content = [
+    el(
+      "div",
+      { className: "month-nav" },
+      el("button", { type: "button", className: "icon-button", ariaLabel: "Année précédente", onclick: () => reopen(year - 1) }, icon("left")),
+      el("h2", { id: "holidays-year", textContent: `Jours fériés ${year}` }),
+      el("button", { type: "button", className: "icon-button", ariaLabel: "Année suivante", onclick: () => reopen(year + 1) }, icon("right")),
+    ),
+    el(
+      "ul",
+      { id: "holiday-rows", className: "holiday-list holiday-manage" },
+      holidays.map(([key, entry]) =>
+        el(
+          "li",
+          {},
+          el(
+            "span",
+            { className: "holiday-name" },
+            entry.name,
+            el("small", { textContent: `${formatDay(parseKey(key))}${entry.isHalf ? " · demi-journée" : ""}${entry.isOfficial ? "" : " · ajouté"}` }),
+          ),
+          el("button", { type: "button", className: "link-button", textContent: "Retirer", onclick: removeHoliday(key, entry) }),
+        ),
+      ),
+    ),
+    removed.length > 0 && el("h3", { textContent: "Retirés" }),
+    removed.length > 0 &&
+      el(
+        "ul",
+        { className: "holiday-list holiday-manage" },
+        removed.map(([key, name]) =>
+          el(
+            "li",
+            {},
+            el("span", { className: "holiday-name" }, name, el("small", { textContent: formatDay(parseKey(key)) })),
+            el("button", {
+              type: "button",
+              className: "restore-button",
+              textContent: "Rétablir",
+              onclick: () =>
+                change(`${name} rétabli`, () => {
+                  delete app.data.holidayOverrides[key];
+                }),
+            }),
+          ),
+        ),
+      ),
+    el("h3", { textContent: "Ajouter un jour férié" }),
+    el("label", { className: "field", htmlFor: "holiday-date", textContent: "Date" }),
+    dateInput,
+    el("label", { className: "field", htmlFor: "holiday-kind", textContent: "Durée" }),
+    kindSelect,
+    el("label", { className: "field", htmlFor: "holiday-name", textContent: "Nom" }),
+    nameInput,
+    error,
+    el(
+      "div",
+      { className: "dialog-actions" },
+      el("button", { type: "button", className: "secondary", textContent: "Fermer", onclick: () => dialog.close() }),
+      el("button", { id: "holiday-add", type: "button", className: "primary", textContent: "Ajouter", onclick: add }),
+    ),
+  ];
+  dialog.replaceChildren(...content.filter(Boolean));
+  if (!dialog.open) {
+    dialog.showModal();
+  }
 }
 
 /**
@@ -112,8 +236,9 @@ function openVacationDialog(app) {
   const endInput = el("input", { id: "vacation-to", type: "date", value: calculator.today });
   const count = el("p", { id: "vacation-count", className: "muted" });
   const update = () => {
-    const days = workingDaysBetween(calculator, startInput.value, endInput.value).length;
-    count.textContent = days ? `${days} jour${days > 1 ? "s" : ""} de vacances. Les week-ends et les jours fériés ne comptent pas.` : "Aucun jour ouvré dans cette période.";
+    const keys = workingDaysBetween(calculator, startInput.value, endInput.value);
+    const days = keys.reduce((total, key) => total + (calculator.day(key).halfHoliday ? 0.5 : 1), 0);
+    count.textContent = days ? `${days.toLocaleString("fr-CH")} jour${days > 1 ? "s" : ""} de vacances. Les week-ends et les jours fériés ne comptent pas.` : "Aucun jour ouvré dans cette période.";
   };
   startInput.addEventListener("change", () => {
     if (endInput.value < startInput.value) endInput.value = startInput.value;
@@ -213,13 +338,14 @@ export function renderCalendar(app) {
             ["vacation", "Vacances"],
             ["halfVacation", "Demi-journée"],
             ["holiday", "Férié"],
+            ["halfHoliday", "Demi-férié"],
             ["sick", "Maladie"],
             ["recovery", "Récupération"],
           ].map(([className, label]) => el("li", {}, el("span", { className: `swatch ${className}` }), label)),
         ),
         el("p", { className: "muted", textContent: "Touche un jour pour le modifier." }),
       ),
-      el("div", { className: "stack" }, vacationCard(app, calculator, year), holidaysCard(calculator)),
+      el("div", { className: "stack" }, vacationCard(app, calculator, year), holidaysCard(app, calculator)),
     ),
   );
 }

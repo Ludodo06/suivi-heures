@@ -153,7 +153,7 @@ export function openDayDialog(app, key) {
         { className: "dialog-summary" },
         `${formatHoursMinutes(info.worked)} de travail · ${formatHoursMinutes(info.pause)} de pause · écart ${formatSigned(info.delta)}`,
       ),
-    !info.isWorkingDay && el("p", { className: "muted", textContent: dayNote(info) }),
+    (!info.isWorkingDay || info.halfHoliday) && el("p", { className: "muted", textContent: dayNote(info) }),
     info.isWorkingDay && el("label", { className: "field", htmlFor: "absence-select", textContent: "Absence" }),
     info.isWorkingDay && absenceSelect,
     !isFuture && el("h3", { textContent: "Périodes de travail" }),

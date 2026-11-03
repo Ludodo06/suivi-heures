@@ -26,6 +26,7 @@ const activeKey = isDemo ? DEMO_KEY : STORAGE_KEY;
  *   - absences: an object from day key to a kind of absence.
  *   - closedDays: an object from day key to true, for the finished days.
  *   - notes: an object from day key to a text.
+ *   - holidayOverrides: the changes to the holidays. See `effectiveHolidays`.
  *   - settings: { dailyHours, vacationDays, startDate, startBalanceMinutes }.
  *     `startDate` is null until the first use.
  */
@@ -35,6 +36,7 @@ export function normalizeData(saved) {
     absences: saved.absences ?? {},
     closedDays: saved.closedDays ?? {},
     notes: saved.notes ?? {},
+    holidayOverrides: saved.holidayOverrides ?? {},
     settings: {
       dailyHours: 8,
       vacationDays: 20,

@@ -1056,6 +1056,7 @@ select {
 .vacation { background: var(--day-vacation); }
 .halfVacation { background: linear-gradient(135deg, var(--day-vacation) 50%, transparent 50%); }
 .holiday { background: var(--day-holiday); }
+.halfHoliday { background: linear-gradient(135deg, var(--day-holiday) 50%, transparent 50%); }
 .sick { background: var(--day-sick); }
 .recovery { background: var(--day-recovery); }
 
@@ -1079,6 +1080,29 @@ select {
 
 .holiday-name {
   font-weight: 550;
+}
+
+.holiday-manage {
+  margin: 8px 0 0;
+}
+
+.restore-button {
+  flex: none;
+  padding: 8px 0;
+  border: none;
+  background: none;
+  color: var(--chip-blue-ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+dialog .month-nav {
+  text-transform: none;
+}
+
+dialog .month-nav h2 {
+  margin: 0;
+  font-size: 1.05rem;
 }
 
 /* ----- day window ----- */
