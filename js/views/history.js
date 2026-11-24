@@ -101,7 +101,7 @@ export function renderHistory(app) {
   }
 
   const exportFile = (title, fromKey, toKey, fileName) => () =>
-    deliverFile(buildReport(calculator, title, fromKey, toKey, app.data.notes), fileName);
+    deliverFile(buildReport(calculator, title, fromKey, toKey, app.data), fileName);
 
   const weekCards = [...weeks.values()]
     .reverse()

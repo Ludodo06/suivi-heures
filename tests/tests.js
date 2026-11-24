@@ -6,6 +6,7 @@ import { formatHoursMinutes, formatSigned } from "../js/time.js";
 import { buildReport } from "../js/export.js";
 import { listChanges } from "../js/storage.js";
 import { daysBetween, nextHoliday, periodStats, targetStreak } from "../js/insights.js";
+import { OTHER_TASK_ID, activeTasks, currentTask, taskNameError, taskTotals } from "../js/tasks.js";
 
 const lines = [];
 function check(name, actual, expected) {
@@ -19,7 +20,7 @@ const session = (day, start, end) => ({
   end: end ? new Date(`${day}T${end}:00`).toISOString() : null,
 });
 const settings = { dailyHours: 8, vacationDays: 20, startDate: "2026-11-02", startBalanceMinutes: 0 };
-const makeData = (sessions, absences = {}, extra = {}, closedDays = {}, holidayOverrides = {}) => ({ sessions, absences, closedDays, notes: {}, holidayOverrides, settings: { ...settings, ...extra } });
+const makeData = (sessions, absences = {}, extra = {}, closedDays = {}, holidayOverrides = {}) => ({ sessions, absences, closedDays, notes: {}, holidayOverrides, tasks: {}, taskLog: {}, settings: { ...settings, ...extra } });
 
 // Holidays of the canton of Vaud in 2026.
 check(
@@ -116,8 +117,55 @@ check("streak", targetStreak(afterDay, "2026-11-02"), 1);
 check("days between over a clock change", daysBetween("2026-10-24", "2026-10-26"), 2);
 check("next holiday", nextHoliday("2026-11-03").key, "2026-12-25");
 
+// Tasks. A moment of work belongs to the last task chosen in its period.
+const change = (day, time, taskId) => ({ at: new Date(`${day}T${time}:00`).toISOString(), taskId });
+const tasks = { [OTHER_TASK_ID]: { name: "Autre", color: "slate", archived: false }, dev: { name: "Dev", color: "blue", archived: false }, old: { name: "Ancienne", color: "pink", archived: true } };
+const taskData = {
+  ...makeData([
+    session("2026-11-02", "08:00", "12:00"),
+    session("2026-11-02", "13:00", "17:00"),
+    session("2026-11-03", "08:00", "10:00"),
+  ]),
+  tasks,
+  taskLog: {
+    a: change("2026-11-02", "08:00", "dev"),
+    b: change("2026-11-02", "10:30", OTHER_TASK_ID),
+    // A choice during the lunch pause does not cover the next period.
+    c: change("2026-11-02", "12:30", "dev"),
+    d: change("2026-11-02", "13:00", OTHER_TASK_ID),
+    e: change("2026-11-02", "15:00", "dev"),
+  },
+};
+const minutes = (map) => Object.fromEntries([...map.entries()].map(([id, ms]) => [id ?? "unset", ms / 60000]));
+const totals = taskTotals(taskData, "2026-11-02", "2026-11-03", new Date("2026-11-04T09:00:00"));
+check("time of each task", minutes(totals.byTask), { dev: 150 + 120, other: 90 + 120 });
+check("a period without any choice is not filled in", totals.unset / 60000, 120);
+check("the pauses belong to no task", (totals.unset + [...totals.byTask.values()].reduce((a, b) => a + b, 0)) / 60000, 10 * 60);
+check("time of each task on one day", minutes(totals.byDay.get("2026-11-02")), { dev: 270, other: 210 });
+check("a day without any choice has no task", totals.byDay.has("2026-11-03"), false);
+check("only the asked days count", taskTotals(taskData, "2026-11-03", "2026-11-03", new Date("2026-11-04T09:00:00")).unset / 60000, 120);
+
+const nightTask = {
+  ...makeData([{ id: "n", start: new Date("2026-11-02T23:00:00").toISOString(), end: new Date("2026-11-03T01:00:00").toISOString() }]),
+  tasks,
+  taskLog: { a: change("2026-11-02", "23:00", "dev") },
+};
+check("a task over midnight is split between the two days", minutes(taskTotals(nightTask, "2026-11-03", "2026-11-03", new Date("2026-11-03T02:00:00")).byTask), { dev: 60 });
+
+const running = { ...makeData([session("2026-11-02", "08:00", "12:00"), session("2026-11-02", "13:00", null)]), tasks, taskLog: { a: change("2026-11-02", "08:00", "dev"), b: change("2026-11-02", "13:00", OTHER_TASK_ID) } };
+check("the running task is the last choice of the period", currentTask(running).taskId, OTHER_TASK_ID);
+check("the running task counts until now", minutes(taskTotals(running, "2026-11-02", "2026-11-02", new Date("2026-11-02T14:00:00")).byTask), { dev: 240, other: 60 });
+check("a running period without any choice", currentTask({ ...running, taskLog: { a: change("2026-11-02", "08:00", "dev") } }).taskId, null);
+check("no running task during a pause", currentTask({ ...running, sessions: running.sessions.slice(0, 1) }), null);
+
+check("Autre comes first, archived tasks are hidden", activeTasks(tasks).map((task) => task.id), [OTHER_TASK_ID, "dev"]);
+check("a task name is needed", taskNameError(tasks, "  ") !== null, true);
+check("two active tasks cannot share a name", taskNameError(tasks, "dev") !== null, true);
+check("an archived name can be used again", taskNameError(tasks, "Ancienne"), null);
+check("a task keeps its own name", taskNameError(tasks, "Dev", "dev"), null);
+
 // The Excel file is a ZIP archive.
-const blob = buildReport(afterDay, "Test", "2026-11-01", "2026-11-30");
+const blob = buildReport(afterDay, "Test", "2026-11-01", "2026-11-30", makeData(fullDay), new Date("2026-11-03T00:30:00"));
 const signature = [...new Uint8Array(await blob.slice(0, 2).arrayBuffer())];
 check("the Excel file is a ZIP archive", signature, [0x50, 0x4b]);
 

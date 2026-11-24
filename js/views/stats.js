@@ -3,7 +3,8 @@
 import { bankChart, columnChart, heatmap, splitBar } from "../charts.js";
 import { card, el, emptyState, segmented, tile } from "../dom.js";
 import { periodStats, targetStreak, weeklyTotals } from "../insights.js";
-import { MS_PER_HOUR, addDays, dateKey, formatDay, formatHoursMinutes, formatSigned, parseKey, startOfWeek } from "../time.js";
+import { UNSET_LABEL, taskName, taskTotals } from "../tasks.js";
+import { MS_PER_HOUR, MS_PER_MINUTE, addDays, dateKey, formatDay, formatHoursMinutes, formatSigned, parseKey, startOfWeek } from "../time.js";
 
 const root = document.getElementById("stats-root");
 
@@ -74,6 +75,29 @@ function timeShareCard(stats) {
       { label: "Travail", value: stats.totalWorked, text: formatHoursMinutes(stats.totalWorked), className: "split-work" },
       { label: "Pauses", value: stats.totalPause, text: formatHoursMinutes(stats.totalPause), className: "split-pause" },
     ]),
+  );
+}
+
+function tasksCard(app, fromKey, toKey) {
+  const { byTask, unset } = taskTotals(app.data, fromKey, toKey, new Date());
+  const total = [...byTask.values()].reduce((sum, value) => sum + value, 0);
+  // A task kept less than a minute is a choice changed at once: it is not shown.
+  const parts = [...byTask.entries()]
+    .filter(([, duration]) => duration >= MS_PER_MINUTE)
+    .sort((a, b) => b[1] - a[1])
+    .map(([taskId, duration]) => ({
+      label: taskName(app.data.tasks, taskId),
+      value: duration,
+      text: formatHoursMinutes(duration),
+      detail: `${formatHoursMinutes(duration)} (${Math.round((duration / total) * 100)} %)`,
+      className: `task-bg-${app.data.tasks[taskId]?.color ?? "slate"}`,
+    }));
+  return card(
+    "Répartition par tâche",
+    total > 0 ? formatHoursMinutes(total) : null,
+    parts.length > 0 ? splitBar(parts) : emptyState("Choisis une tâche en démarrant le travail pour voir la répartition ici."),
+    unset > 0 &&
+      el("p", { className: "muted task-unset-note", textContent: `${formatHoursMinutes(unset)} ${UNSET_LABEL.toLowerCase()}, hors répartition.` }),
   );
 }
 
@@ -151,6 +175,7 @@ export function renderStats(app) {
       weeksCard(calculator, activeRange, dailyHours),
       weekDaysCard(stats, dailyHours),
       timeShareCard(stats),
+      tasksCard(app, fromKey, calculator.today),
     ),
     heatmapCard(calculator, dailyHours),
   );

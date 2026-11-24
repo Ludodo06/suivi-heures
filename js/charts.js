@@ -112,8 +112,9 @@ export function progressRing(progress, size = 232) {
  * Creates the bar that shows the work and the pauses across a day.
  *
  * Args:
- *   segments: An array of { from, to, kind, tip }. `from` and `to` are Dates.
- *     `kind` is "work", "pause" or "open-pause".
+ *   segments: An array of { from, to, kind, tip, className }. `from` and `to`
+ *     are Dates. `kind` is "work", "pause" or "open-pause". `className` is
+ *     optional and replaces the color of the kind.
  *   dayStart: The Date at 00:00 of the day.
  *   nowMark: The current moment, or null to hide its mark.
  *
@@ -134,7 +135,7 @@ export function dayTimeline(segments, dayStart, nowMark) {
   for (const segment of segments) {
     const start = toHours(segment.from);
     const width = ((toHours(segment.to) - start) / (endHour - startHour)) * 100;
-    const mark = el("span", { className: `timeline-part timeline-${segment.kind}` });
+    const mark = el("span", { className: `timeline-part ${segment.className ?? `timeline-${segment.kind}`}` });
     mark.style.left = position(start);
     mark.style.width = `${width}%`;
     track.append(withTip(mark, segment.tip));
@@ -317,8 +318,9 @@ export function sparkline(values) {
  * Creates a bar split into parts, with its legend.
  *
  * Args:
- *   parts: An array of { label, value, text, className }. `text` is printed
- *     inside the part when it is wide enough.
+ *   parts: An array of { label, value, text, className, detail }. `text` is
+ *     printed inside the part when it is wide enough. `detail` is optional and
+ *     follows the label in the legend.
  *
  * Returns:
  *   The new element.
@@ -339,7 +341,7 @@ export function splitBar(parts) {
   const legend = el(
     "ul",
     { className: "legend" },
-    parts.map((part) => el("li", {}, el("span", { className: `swatch ${part.className}` }), part.label)),
+    parts.map((part) => el("li", {}, el("span", { className: `swatch ${part.className}` }), part.detail ? `${part.label} · ${part.detail}` : part.label)),
   );
   return el("div", {}, bar, legend);
 }

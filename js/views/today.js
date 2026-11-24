@@ -1,12 +1,14 @@
 // The main screen: the progress of the day, the actions and a few widgets.
 
 import { dayNote } from "../calculator.js";
-import { columnChart, dayTimeline, progressRing, sparkline } from "../charts.js";
-import { card, el, tile } from "../dom.js";
+import { columnChart, dayTimeline, progressRing, sparkline, splitBar } from "../charts.js";
+import { card, el, showToast, tile } from "../dom.js";
 import { icon } from "../icons.js";
 import { nextHoliday, nextVacation } from "../insights.js";
+import { OTHER_TASK_ID, UNSET_LABEL, activeTasks, addTask, currentTask, dayTaskPieces, taskName, taskNameError, taskTotals } from "../tasks.js";
 import {
   MS_PER_HOUR,
+  MS_PER_MINUTE,
   addDays,
   dateKey,
   formatClock,
@@ -25,6 +27,8 @@ const WEEK_LETTERS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
 let secondsElement = null;
 let lastKey = null;
+// The task chosen for the next start. Without any choice, it is "Autre".
+let chosenTask = OTHER_TASK_ID;
 
 function greeting(now, name) {
   const hour = now.getHours();
@@ -52,12 +56,20 @@ const STATUS = {
   forgotten: { text: "Chrono oublié", iconName: "alert" },
 };
 
-function timelineSegments(todaySessions, now, state) {
-  const segments = [];
+function taskClass(tasks, taskId) {
+  return taskId === null ? "task-bg-unset" : `task-bg-${tasks[taskId]?.color ?? "slate"}`;
+}
+
+function timelineSegments(data, today, todaySessions, now, state) {
+  const segments = dayTaskPieces(data, today, now).map(({ from, to, taskId }) => ({
+    from,
+    to,
+    kind: "work",
+    className: taskClass(data.tasks, taskId),
+    tip: `${taskName(data.tasks, taskId)} ${formatClock(from)} – ${to.getTime() === now.getTime() ? "en cours" : formatClock(to)}`,
+  }));
   todaySessions.forEach((session, index) => {
-    const from = new Date(session.start);
     const to = session.end ? new Date(session.end) : now;
-    segments.push({ from, to, kind: "work", tip: `Travail ${formatClock(from)} – ${session.end ? formatClock(to) : "en cours"}` });
     const next = todaySessions[index + 1];
     if (next) {
       const pauseEnd = new Date(next.start);
@@ -77,8 +89,13 @@ function actionButtons(app, state) {
 
   const start = (message) => () =>
     app.action(message, () => {
+      const at = new Date().toISOString();
+      const taskId = app.data.tasks[chosenTask] && !app.data.tasks[chosenTask].archived ? chosenTask : OTHER_TASK_ID;
       delete app.data.closedDays[today()];
-      app.data.sessions.push({ id: crypto.randomUUID(), start: new Date().toISOString(), end: null });
+      app.data.sessions.push({ id: crypto.randomUUID(), start: at, end: null });
+      app.data.taskLog[crypto.randomUUID()] = { at, taskId };
+      // After a pause, the work starts again on "Autre".
+      chosenTask = OTHER_TASK_ID;
     });
   const finish = () =>
     app.action("Journée terminée", () => {
@@ -112,6 +129,111 @@ function actionButtons(app, state) {
     return [button("toggle-button", "action action-finish", "play", "Reprendre le travail", start("Journée rouverte"))];
   }
   return [button("toggle-button", "action action-start", "play", "Démarrer", start("Bonne journée !"))];
+}
+
+function switchTask(app, taskId) {
+  app.action(`Tâche : ${taskName(app.data.tasks, taskId)}`, () => {
+    app.data.taskLog[crypto.randomUUID()] = { at: new Date().toISOString(), taskId };
+  });
+}
+
+// Asks the name of a new task, then picks it.
+function createTaskFromPrompt(app, isWorking) {
+  const name = prompt("Nom de la nouvelle tâche");
+  if (name === null) {
+    return;
+  }
+  const error = taskNameError(app.data.tasks, name);
+  if (error) {
+    showToast(error);
+    return;
+  }
+  app.action(`Tâche « ${name.trim()} » ajoutée`, () => {
+    const taskId = addTask(app.data.tasks, name);
+    if (isWorking) {
+      app.data.taskLog[crypto.randomUUID()] = { at: new Date().toISOString(), taskId };
+    } else {
+      chosenTask = taskId;
+    }
+  });
+}
+
+/**
+ * Creates the row of tasks of the timer. While working, a tap changes the task.
+ * Otherwise, a tap chooses the task of the next start.
+ */
+function taskPicker(app, state) {
+  const { name } = state;
+  if (name === "forgotten") {
+    return null;
+  }
+  const isWorking = name === "work";
+  const running = isWorking ? currentTask(app.data) : null;
+  const tasks = activeTasks(app.data.tasks);
+  if (!tasks.some((task) => task.id === chosenTask)) {
+    chosenTask = OTHER_TASK_ID;
+  }
+  const selected = isWorking ? running.taskId : chosenTask;
+  const label = isWorking
+    ? running.taskId === null
+      ? `${UNSET_LABEL} · choisis une tâche`
+      : `Tâche en cours depuis ${formatClock(running.since)}`
+    : `${name === "idle" ? "Démarrer" : "Reprendre"} avec`;
+
+  const chip = (task) =>
+    el(
+      "button",
+      {
+        type: "button",
+        className: `task-chip${task.id === selected ? " active" : ""}`,
+        ariaPressed: String(task.id === selected),
+        onclick: () => {
+          if (task.id === selected) return;
+          if (isWorking) {
+            switchTask(app, task.id);
+          } else {
+            chosenTask = task.id;
+            renderToday(app);
+          }
+        },
+      },
+      el("span", { className: `task-dot task-bg-${task.color}` }),
+      task.name,
+    );
+  return el(
+    "div",
+    { id: "task-picker", className: "task-picker" },
+    el("p", { className: "task-picker-label", textContent: label }),
+    el(
+      "div",
+      { className: "task-chips" },
+      tasks.map(chip),
+      el("button", { type: "button", className: "task-chip task-chip-add", ariaLabel: "Nouvelle tâche", onclick: () => createTaskFromPrompt(app, isWorking) }, icon("plus", 14), "Tâche"),
+    ),
+  );
+}
+
+// The part of the day spent on each task. The work without any task stays out.
+function dayTaskShare(app, today, now) {
+  const { byTask, unset } = taskTotals(app.data, today, today, now);
+  // A task kept less than a minute is a choice changed at once: it is not shown.
+  const parts = [...byTask.entries()]
+    .filter(([, duration]) => duration >= MS_PER_MINUTE)
+    .sort((a, b) => b[1] - a[1])
+    .map(([taskId, duration]) => ({
+      label: taskName(app.data.tasks, taskId),
+      value: duration,
+      text: formatHoursMinutes(duration),
+      detail: formatHoursMinutes(duration),
+      className: taskClass(app.data.tasks, taskId),
+    }));
+  return el(
+    "div",
+    { className: "task-share" },
+    parts.length > 0 && el("h3", { className: "subheading", textContent: "Répartition par tâche" }),
+    parts.length > 0 && splitBar(parts),
+    unset > 0 && el("p", { className: "muted", textContent: `${formatHoursMinutes(unset)} ${UNSET_LABEL.toLowerCase()}, hors répartition.` }),
+  );
 }
 
 function heroSubtitle(state, info, now, todaySessions) {
@@ -217,6 +339,7 @@ function buildToday(app, calculator, state, now) {
         el("span", { id: "pause-value", className: "ring-sub", textContent: heroSubtitle(name, info, now, todaySessions) }),
       ),
     ),
+    taskPicker(app, state),
     el("div", { className: "actions" }, actionButtons(app, state)),
   );
   timer.classList.add("card-timer");
@@ -248,7 +371,7 @@ function buildToday(app, calculator, state, now) {
     }),
   );
 
-  const segments = timelineSegments(todaySessions, now, name);
+  const segments = timelineSegments(app.data, calculator.today, todaySessions, now, name);
   const showNow = name === "work" || name === "pause" || name === "idle";
   const timeline = card(
     "Ma journée",
@@ -257,9 +380,11 @@ function buildToday(app, calculator, state, now) {
     el(
       "ul",
       { className: "legend" },
-      el("li", {}, el("span", { className: "swatch timeline-work" }), "Travail"),
       el("li", {}, el("span", { className: "swatch timeline-pause" }), "Pause"),
+      segments.some((segment) => segment.className === "task-bg-unset") &&
+        el("li", {}, el("span", { className: "swatch task-bg-unset" }), UNSET_LABEL),
     ),
+    dayTaskShare(app, calculator.today, now),
     el(
       "ul",
       { id: "today-periods", className: "period-chips" },
@@ -292,7 +417,7 @@ export function renderToday(app, force = true) {
   const now = new Date();
   const calculator = app.calculator();
   const state = dayState(app, calculator);
-  const key = `${state.name}|${formatClock(now)}`;
+  const key = `${state.name}|${formatClock(now)}|${currentTask(app.data)?.taskId}`;
   if (force || key !== lastKey) {
     lastKey = key;
     buildToday(app, calculator, state, now);

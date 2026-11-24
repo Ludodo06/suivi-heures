@@ -4,13 +4,14 @@
 
 import { createDemoData } from "./demo.js";
 import { FIREBASE_CONFIG } from "./firebase-config.js";
+import { OTHER_TASK, OTHER_TASK_ID } from "./tasks.js";
 import { dateKey } from "./time.js";
 
 const FIREBASE_CODE = "https://www.gstatic.com/firebasejs/13.1.0";
 const DEMO_KEY = "suivi-heures.demo";
 const THEME_KEY = "suivi-heures.theme";
 const OLD_LOCAL_KEY = "suivi-heures.data";
-const GROUPS = ["sessions", "absences", "closedDays", "notes", "holidayOverrides", "settings"];
+const GROUPS = ["sessions", "absences", "closedDays", "notes", "holidayOverrides", "tasks", "taskLog", "settings"];
 
 /** True when the page shows the example data instead of the real data. */
 export const isDemo = new URLSearchParams(location.search).has("demo");
@@ -36,6 +37,10 @@ let stopWatching = () => {};
  *   - closedDays: an object from day key to true, for the finished days.
  *   - notes: an object from day key to a text.
  *   - holidayOverrides: the changes to the holidays. See `effectiveHolidays`.
+ *   - tasks: an object from task id to { name, color, archived }. The task
+ *     "other" (Autre) is always there.
+ *   - taskLog: an object from id to { at, taskId }: from the moment `at`, the
+ *     work is on this task. See `tasks.js`.
  *   - settings: { dailyHours, vacationDays, startDate, startBalanceMinutes,
  *     profileName }. `startDate` is null until the first use.
  */
@@ -46,6 +51,8 @@ export function normalizeData(saved) {
     closedDays: saved.closedDays ?? {},
     notes: saved.notes ?? {},
     holidayOverrides: saved.holidayOverrides ?? {},
+    tasks: { [OTHER_TASK_ID]: { ...OTHER_TASK }, ...saved.tasks },
+    taskLog: saved.taskLog ?? {},
     settings: {
       dailyHours: 8,
       vacationDays: 20,

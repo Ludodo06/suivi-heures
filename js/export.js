@@ -1,32 +1,37 @@
 // Builds the Excel file of the hours and gives it to the user.
 
 import { dayNote } from "./calculator.js";
+import { UNSET_LABEL, taskName, taskTotals } from "./tasks.js";
 import { addDays, dateKey, formatClock, formatSigned, parseKey } from "./time.js";
 import { STYLE, buildXlsx } from "./xlsx.js";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const COLUMN_WIDTHS = [12, 8, 32, 9, 9, 10, 10, 10, 11, 11];
 const HEADERS = ["Date", "Jour", "Note", "Arrivée", "Départ", "Travail", "Pauses", "Objectif", "Écart", "Banque"];
+const TASK_COLUMN_WIDTHS = [12, 30, 10, 8];
 
 const excelDate = (date) => (Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) - Date.UTC(1899, 11, 30)) / MS_PER_DAY;
 const duration = (ms, style = STYLE.DURATION) => ({ value: ms / MS_PER_DAY, style });
 
 /**
  * Builds the Excel file of a period. It stops at today.
- * Weekends, holidays and days before the start of the tracking only appear when
- * they have work hours.
+ * The first sheet has the hours of each day. Weekends, holidays and days before
+ * the start of the tracking only appear when they have work hours. The second
+ * sheet has the time of each task.
  *
  * Args:
  *   calculator: The calculator of the data.
  *   title: The title on the first row.
  *   fromKey: The key of the first day.
  *   toKey: The key of the last day.
- *   notes: The notes of the user, from day key to text.
+ *   data: The saved data, for the notes and the tasks.
+ *   now: The current moment.
  *
  * Returns:
  *   A Blob with the content of the file.
  */
-export function buildReport(calculator, title, fromKey, toKey, notes = {}) {
+export function buildReport(calculator, title, fromKey, toKey, data, now = new Date()) {
+  const { notes } = data;
   const rows = [
     [{ value: title, style: STYLE.BOLD }],
     [],
@@ -74,7 +79,38 @@ export function buildReport(calculator, title, fromKey, toKey, notes = {}) {
     { value: formatSigned(totals.delta), style: STYLE.BOLD },
     { value: formatSigned(calculator.bankAfter(toKey) ?? calculator.bank), style: STYLE.BOLD },
   ]);
-  return buildXlsx("Heures", COLUMN_WIDTHS, rows);
+  return buildXlsx([
+    { name: "Heures", columnWidths: COLUMN_WIDTHS, rows },
+    { name: "Tâches", columnWidths: TASK_COLUMN_WIDTHS, rows: taskRows(data, title, fromKey, toKey < calculator.today ? toKey : calculator.today, now) },
+  ]);
+}
+
+// The rows of the tasks sheet: the time of each task on each day, then the totals.
+function taskRows(data, title, fromKey, toKey, now) {
+  const { byTask, byDay, unset } = taskTotals(data, fromKey, toKey, now);
+  const total = [...byTask.values()].reduce((sum, value) => sum + value, 0);
+  const rows = [
+    [{ value: `${title} – tâches`, style: STYLE.BOLD }],
+    [],
+    ["Date", "Tâche", "Durée"].map((value) => ({ value, style: STYLE.BOLD })),
+  ];
+  const byName = (a, b) => taskName(data.tasks, a[0]).localeCompare(taskName(data.tasks, b[0]), "fr");
+  for (const key of [...byDay.keys()].sort()) {
+    for (const [taskId, time] of [...byDay.get(key).entries()].sort(byName)) {
+      rows.push([{ value: excelDate(parseKey(key)), style: STYLE.DATE }, taskName(data.tasks, taskId), duration(time)]);
+    }
+  }
+  rows.push([]);
+  rows.push(["", "Total par tâche", "Durée", "Part"].map((value) => ({ value, style: STYLE.BOLD })));
+  for (const [taskId, time] of [...byTask.entries()].sort((a, b) => b[1] - a[1])) {
+    rows.push([null, taskName(data.tasks, taskId), duration(time), `${Math.round((time / total) * 100)} %`]);
+  }
+  rows.push([null, { value: "Total", style: STYLE.BOLD }, duration(total, STYLE.BOLD_DURATION)]);
+  if (unset > 0) {
+    rows.push([]);
+    rows.push([null, `${UNSET_LABEL} (hors répartition)`, duration(unset)]);
+  }
+  return rows;
 }
 
 /**

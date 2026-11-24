@@ -20,12 +20,12 @@ const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`;
 
-const CONTENT_TYPES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+const contentTypesXml = (sheetCount) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
 <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+${sheetIndexes(sheetCount).map((number) => `<Override PartName="/xl/worksheets/sheet${number}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("\n")}
 <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
 </Types>`;
 
@@ -34,11 +34,16 @@ const ROOT_RELS_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
 </Relationships>`;
 
-const WORKBOOK_RELS_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+// The styles take the id after the sheets.
+const workbookRelsXml = (sheetCount) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+${sheetIndexes(sheetCount).map((number) => `<Relationship Id="rId${number}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${number}.xml"/>`).join("\n")}
+<Relationship Id="rId${sheetCount + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 </Relationships>`;
+
+function sheetIndexes(count) {
+  return Array.from({ length: count }, (_, index) => index + 1);
+}
 
 const escapeXml = (text) =>
   String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -127,26 +132,28 @@ function zip(files) {
 }
 
 /**
- * Builds an Excel file with one sheet.
+ * Builds an Excel file.
  *
  * Args:
- *   sheetName: The name of the sheet.
- *   columnWidths: The width of each column.
- *   rows: An array of rows. Each row is an array of cells. A cell is null, a
- *     text, a number, or { value, style } with a style from `STYLE`.
+ *   sheets: An array of { name, columnWidths, rows }. `columnWidths` is in
+ *     characters. A row is an array of cells. A cell is null, a text, a number,
+ *     or { value, style } with a style of STYLE.
  *
  * Returns:
  *   A Blob with the content of the file.
  */
-export function buildXlsx(sheetName, columnWidths, rows) {
+export function buildXlsx(sheets) {
+  const sheetList = sheets
+    .map(({ name }, index) => `<sheet name="${escapeXml(name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`)
+    .join("");
   const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${escapeXml(sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheetList}</sheets></workbook>`;
   return zip([
-    ["[Content_Types].xml", CONTENT_TYPES_XML],
+    ["[Content_Types].xml", contentTypesXml(sheets.length)],
     ["_rels/.rels", ROOT_RELS_XML],
     ["xl/workbook.xml", workbook],
-    ["xl/_rels/workbook.xml.rels", WORKBOOK_RELS_XML],
+    ["xl/_rels/workbook.xml.rels", workbookRelsXml(sheets.length)],
     ["xl/styles.xml", STYLES_XML],
-    ["xl/worksheets/sheet1.xml", sheetXml(columnWidths, rows)],
+    ...sheets.map(({ columnWidths, rows }, index) => [`xl/worksheets/sheet${index + 1}.xml`, sheetXml(columnWidths, rows)]),
   ]);
 }

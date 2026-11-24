@@ -18,11 +18,15 @@ Then open http://localhost:8000.
 - A timer with pauses and an explicit end of the day, with a progress ring.
 - The work and the pauses of each day, on a timeline, and the planned end of the day.
 - An hour bank: the time above or below the daily target.
+- Tasks: the work time split between tasks. The task "Autre" is the default one. Each start
+  and each restart after a pause is on "Autre", unless another task is chosen first. The task
+  can change at any time during the work. The work without any task, like all the hours saved
+  before the tasks, is "Non renseignée" and stays out of the distribution.
 - Hours and notes that can be corrected afterwards, for any day.
 - A calendar with the vacation days and the public holidays of the canton of Vaud.
 - Holidays that can be added or removed, for a full day or a half day.
-- Statistics: averages, records, weekly hours, bank evolution and a year heatmap.
-- An Excel export of a month or a year, and a backup file.
+- Statistics: averages, records, weekly hours, bank evolution, time per task and a year heatmap.
+- An Excel export of a month or a year, with a sheet for the tasks, and a backup file.
 - Example data, to try the app: add `?demo=1` to the address.
 
 ## Accounts and data
@@ -49,6 +53,7 @@ Start the local server, then open http://localhost:8000/tests/.
 - `js/charts.js`: the charts, in plain SVG and HTML.
 - `js/calculator.js`: the totals of a day, the hour bank and the vacation count.
 - `js/insights.js`: the averages, the records and the next events.
+- `js/tasks.js`: the tasks and the time spent on each of them.
 - `js/holidays.js`: the public holidays of the canton of Vaud.
 - `js/time.js`: date and duration helpers.
 - `js/export.js` and `js/xlsx.js`: the Excel export.

@@ -6,6 +6,7 @@ import { icon } from "../icons.js";
 import { changePassword, isDemo, loadTheme, normalizeData, saveTheme, signOutProfile } from "../storage.js";
 import { dateKey } from "../time.js";
 import { deliverFile } from "../export.js";
+import { OTHER_TASK_ID, TASK_COLORS, addTask, taskNameError } from "../tasks.js";
 
 const root = document.getElementById("settings-root");
 
@@ -71,6 +72,107 @@ function rulesCard(app) {
     el("button", { type: "submit", className: "primary full", textContent: "Enregistrer" }),
   );
   return card("Mes règles", null, form);
+}
+
+function taskRow(app, id, task) {
+  const isOther = id === OTHER_TASK_ID;
+  const nameInput = el("input", {
+    type: "text",
+    value: task.name,
+    maxLength: 40,
+    ariaLabel: "Nom de la tâche",
+    disabled: isOther,
+    onchange: () => {
+      const error = taskNameError(app.data.tasks, nameInput.value, id);
+      if (error) {
+        showToast(error);
+        nameInput.value = task.name;
+        return;
+      }
+      app.action("Tâche renommée", () => {
+        app.data.tasks[id].name = nameInput.value.trim();
+      });
+    },
+  });
+  const colorSelect = el(
+    "select",
+    {
+      ariaLabel: "Couleur",
+      disabled: isOther,
+      onchange: () =>
+        app.action("Couleur changée", () => {
+          app.data.tasks[id].color = colorSelect.value;
+        }),
+    },
+    Object.entries(TASK_COLORS).map(([value, label]) => el("option", { value, textContent: label })),
+  );
+  colorSelect.value = task.color;
+  const toggle = (archived) => () => {
+    if (!archived && taskNameError(app.data.tasks, task.name, id)) {
+      showToast("Une tâche active porte déjà ce nom.");
+      return;
+    }
+    app.action(archived ? "Tâche archivée" : "Tâche réactivée", () => {
+      app.data.tasks[id].archived = archived;
+    });
+  };
+  return el(
+    "li",
+    { className: `task-row${task.archived ? " archived" : ""}` },
+    el("span", { className: `task-dot task-bg-${task.color}` }),
+    nameInput,
+    colorSelect,
+    isOther
+      ? el("span", { className: "task-row-note", textContent: "Par défaut" })
+      : el("button", { type: "button", className: "link-button", textContent: task.archived ? "Réactiver" : "Archiver", onclick: toggle(!task.archived) }),
+  );
+}
+
+function tasksCard(app) {
+  const entries = Object.entries(app.data.tasks).sort(([idA, a], [idB, b]) =>
+    idA === OTHER_TASK_ID ? -1 : idB === OTHER_TASK_ID ? 1 : a.name.localeCompare(b.name, "fr"),
+  );
+  const active = entries.filter(([, task]) => !task.archived);
+  const archived = entries.filter(([, task]) => task.archived);
+  const nameInput = el("input", { id: "new-task-name", type: "text", maxLength: 40, placeholder: "Ex. : Projet X, réunions…", required: true });
+  const form = el(
+    "form",
+    {
+      id: "task-form",
+      className: "task-form",
+      onsubmit: (event) => {
+        event.preventDefault();
+        const error = taskNameError(app.data.tasks, nameInput.value);
+        if (error) {
+          showToast(error);
+          return;
+        }
+        const name = nameInput.value.trim();
+        app.action(`Tâche « ${name} » ajoutée`, () => {
+          addTask(app.data.tasks, name);
+        });
+      },
+    },
+    nameInput,
+    el("button", { type: "submit", className: "primary" }, icon("plus", 16), "Ajouter"),
+  );
+  return card(
+    "Mes tâches",
+    null,
+    el("p", {
+      className: "muted",
+      textContent: "Choisis une tâche en démarrant, puis change-la quand tu veux. Sans choix, c'est « Autre ». Une tâche archivée garde ses heures passées.",
+    }),
+    el("ul", { id: "task-list", className: "task-list" }, active.map(([id, task]) => taskRow(app, id, task))),
+    form,
+    archived.length > 0 &&
+      el(
+        "details",
+        { className: "task-archived" },
+        el("summary", { textContent: `Tâches archivées (${archived.length})` }),
+        el("ul", { className: "task-list" }, archived.map(([id, task]) => taskRow(app, id, task))),
+      ),
+  );
 }
 
 function themeCard(app) {
@@ -215,7 +317,7 @@ export function renderSettings(app) {
     el(
       "div",
       { className: "columns-layout" },
-      rulesCard(app),
+      el("div", { className: "stack" }, rulesCard(app), tasksCard(app)),
       el("div", { className: "stack" }, !isDemo && profileCard(app), themeCard(app), backupCard(app), demoCard()),
     ),
   );

@@ -4,6 +4,13 @@ import { holidaysOf } from "./holidays.js";
 import { addDays, dateKey, parseKey } from "./time.js";
 
 const DEMO_DAYS = 150;
+// Before this many days, the example has no task: like a history saved before the tasks.
+const DAYS_WITH_TASKS = 90;
+const DEMO_TASKS = {
+  "demo-dev": { name: "Développement", color: "blue", archived: false },
+  "demo-meetings": { name: "Réunions", color: "violet", archived: false },
+  "demo-support": { name: "Support", color: "teal", archived: false },
+};
 
 /**
  * Creates the example data.
@@ -27,7 +34,24 @@ export function createDemoData(now) {
   const sessions = [];
   const absences = {};
   const at = (date, minutes) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, minutes).toISOString();
-  const addSession = (date, start, end) => sessions.push({ id: crypto.randomUUID(), start: at(date, start), end: end === null ? null : at(date, end) });
+  const taskLog = {};
+  const taskIds = [...Object.keys(DEMO_TASKS), "other"];
+  let withTasks = false;
+  const logTask = (date, minutes, taskId) => {
+    taskLog[crypto.randomUUID()] = { at: at(date, minutes), taskId };
+  };
+  // Each period starts on a task, and sometimes changes once on the way.
+  const addSession = (date, start, end) => {
+    sessions.push({ id: crypto.randomUUID(), start: at(date, start), end: end === null ? null : at(date, end) });
+    if (!withTasks) {
+      return;
+    }
+    logTask(date, start, taskIds[random(0, taskIds.length - 1)]);
+    const length = (end ?? start + 60) - start;
+    if (length > 90 && random(0, 2) > 0) {
+      logTask(date, start + random(30, length - 30), taskIds[random(0, taskIds.length - 1)]);
+    }
+  };
 
   for (let date = first; dateKey(date) <= today; date = addDays(date, 1)) {
     const key = dateKey(date);
@@ -36,6 +60,7 @@ export function createDemoData(now) {
       continue;
     }
     const daysAgo = Math.round((parseKey(today) - date) / 86400000);
+    withTasks = daysAgo < DAYS_WITH_TASKS;
     if (daysAgo >= 60 && daysAgo < 67) {
       absences[key] = "vacation";
       continue;
@@ -84,6 +109,8 @@ export function createDemoData(now) {
     absences,
     notes: {},
     closedDays: {},
+    tasks: structuredClone(DEMO_TASKS),
+    taskLog,
     settings: { dailyHours: 8, vacationDays: 20, startDate: dateKey(first), startBalanceMinutes: 0 },
   };
 }
